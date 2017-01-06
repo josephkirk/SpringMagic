@@ -1,0 +1,207 @@
+
+///////////////////////////////////////////////////
+// Misc Procs
+
+global proc checkPlaySpeed ()
+{	
+	string $playbackSpeed = `playbackOptions -q -ps`;
+	if ($playbackSpeed != 0)
+	{
+	string $result = `confirmDialog -title "Playback Speed Check" -message "For best results your playback speed should be set to : play every frame \n\n\                               Would you like to change it now?"
+		-messageAlign "Center" -button "Yes" -button "No" -defaultButton "No" -cancelButton "No" -dismissString "No"`;
+	if ($result == "Yes")
+		playbackOptions -ps 0;
+	}
+		
+}
+///////////////////////////////////////////////////
+// Hair Procs
+	
+global proc makeHairJointsCollide (string $hairSystem, string $handle)
+{	
+	pickWalk -d down;
+	string $meshesAndNurbs[] = `filterExpand -sm 10 -sm 12`;
+	select -r $meshesAndNurbs;
+	
+	if (`size $meshesAndNurbs` < 1)
+		warning "No Nurbs or Meshes selected.  Nothing to collide with.";
+	else
+		{
+		collision -r 1 -f 0  $meshesAndNurbs;
+		connectDynamic -c $meshesAndNurbs $hairSystem;
+		}		
+}
+	
+global proc driveJointsWithHair(int $detail, int $falloff)
+{	
+	checkPlaySpeed;
+
+	string $joints[] = `ls -sl`;
+	
+	if (`size $joints` != 2)
+		error "Hair Single Chain: two joints must be selected first: root joint + joint at end of chain";
+	
+	string $tmpIKspline[] = `ikHandle -sol ikSplineSolver -ns ($detail + 1)`; //create spline ik for curve only
+	delete $tmpIKspline[0] $tmpIKspline[1]; //delete handle and effector.
+	string $hairCurveBase = `rename $tmpIKspline[2] "baseCurve#"`;
+	setAttr ($hairCurveBase+".visibility") 0;
+
+	//////////////////////////
+	//Create Hair Curve
+	//	
+	select -r $hairCurveBase; //selects old spline ik curve
+
+
+	//make curve dynamic creates new curve, get name:
+	//NOTE : proc arguments changed in 8.0 ->  global proc makeCurvesDynamicHairs(int $surfaceAttach, int $snapToSurface, int $matchPosition)
+	//makeCurvesDynamicHairs; 
+	makeCurvesDynamicHairs 0 0 0; 
+
+
+	pickWalk -d down; //for hair system shape
+	string $hsys[] = `ls -sl`; //hair system name, to find follicle
+	setAttr ($hsys[0]+".gravity") 20;
+	pickWalk -d up;
+	string $hsysXform[] = `ls -sl`;
+	select -cl;
+
+	string $folXform[] = `listConnections -type follicle $hsys[0]`;
+	select -r $folXform[0];
+	pickWalk -d down;
+	string $fol[] = `ls -sl`; //odd that connection above is to transform, not shape.
+	setAttr ($fol[0]+ ".degree") 3;
+	setAttr ($fol[0]+ ".pointLock") 1; //lock base end of curve.
+	setAttr ($folXform[0]+".visibility") 0;
+	
+	string $tmp[] = `listConnections -s off -d on $fol[0]`; //to get output curve shape
+	string $hairCurve = `rename $tmp[1] "hairCurve#"`;
+	
+	//assign dynamic curve as spline ik. Could also assign as wire as a variation.
+	string $ikInfo[] = `ikHandle -sol ikSplineSolver -ccv false -snc true -startJoint $joints[0] -endEffector $joints[1] -pcv on -curve $hairCurve`;
+	//parent -w $hairCurve; //unparents original curve to avoid double transform.
+	
+	
+	
+	///////////////////////////////
+	//Modify IK node for hair attrs
+	//
+	$hairHandle = `rename $ikInfo[0] "hairHandle#"`;
+	select -r $hairHandle;
+
+	//Hide normal IK attrs from channel box
+	setAttr ($hairHandle + ".displayHandle") 1;
+	setAttr ($hairHandle + ".selectHandleY") 2;
+	setAttr ($hairHandle + ".tx") -k 0; setAttr ($hairHandle + ".ty") -k 0; setAttr ($hairHandle + ".tz") -k 0;
+	setAttr ($hairHandle + ".rx") -k 0; setAttr ($hairHandle + ".ry") -k 0; setAttr ($hairHandle + ".rz") -k 0;
+	setAttr ($hairHandle + ".sx") -k 0; setAttr ($hairHandle + ".sy") -k 0; setAttr ($hairHandle + ".sz") -k 0;
+	setAttr ($hairHandle + ".pvx") -k 0; setAttr ($hairHandle + ".pvy") -k 0; setAttr ($hairHandle + ".pvz") -k 0;
+	setAttr ($hairHandle + ".off") -k 0; setAttr ($hairHandle + ".rol") -k 0; setAttr ($hairHandle + ".twi") -k 0; setAttr ($hairHandle + ".ikb") -k 0;
+
+	//create attributes
+	addAttr -ln hairStiffness -at double  -min -0 -max 1 -dv 0.25 $hairHandle;
+	setAttr -e -keyable true ($hairHandle + ".hairStiffness");
+	connectAttr -f ($hairHandle + ".hairStiffness") ($hsys[0]+".stiffness");
+
+	addAttr -ln hairGravity -at double -min -10 -max 100 -dv 20 $hairHandle;
+	setAttr -e -keyable true ($hairHandle + ".hairGravity");
+	connectAttr -f ($hairHandle + ".hairGravity") ($hsys[0]+".gravity");
+
+	addAttr -ln hairDamping -at double -min 0 -max 1 -dv 0 $hairHandle;
+	setAttr -e -keyable true ($hairHandle + ".hairDamping");
+	connectAttr -f ($hairHandle + ".hairDamping") ($hsys[0]+".damp");
+
+	addAttr -ln hairFriction -at double -min 0 -max 1 -dv 0.1 $hairHandle;
+	setAttr -e -keyable true ($hairHandle + ".hairFriction");
+	connectAttr -f ($hairHandle + ".hairFriction") ($hsys[0]+".friction");
+
+	//addAttr -ln hairWeight -at double -min 0 -max 100 -dv 1 $hairHandle;
+	//setAttr -e -keyable true ($hairHandle + ".hairWeight");
+	//connectAttr -f ($hairHandle + ".hairWeight") ($hsys[0]+".dynamicsWeight");
+
+	
+	////////////////////////////	
+	//Set falloff on stiffness
+	//$falloff : 0=Normal 1=Quick 2=Slow
+	
+	if ($falloff == 0)
+			{
+			setAttr ($hairHandle + ".hairStiffness") .5;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_Position") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_FloatValue") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Position") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_FloatValue") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Interp") 1;
+			}
+				
+	if ($falloff == 1)
+			{
+			setAttr ($hairHandle + ".hairStiffness") .5;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_Position") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_FloatValue") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Position") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_FloatValue") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Interp") 3;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_Position") .25;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_FloatValue") .25;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_Interp") 3;
+			}
+		
+	if ($falloff == 2)
+			{
+			setAttr ($hairHandle + ".hairStiffness") .5;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_Position") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[1].stiffnessScale_FloatValue") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Position") 0;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_FloatValue") 1;
+			setAttr ($hsys[0] + ".stiffnessScale[0].stiffnessScale_Interp") 3;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_Position") .75;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_FloatValue") .75;
+			setAttr ($hsys[0] + ".stiffnessScale[2].stiffnessScale_Interp") 3;
+			}
+		
+	$groupName = `group -n "dynJoint_HairStuff#" $hairHandle $hairCurve $hsysXform[0] ($hsysXform[0]+"OutputCurves")`;	
+	$hairHandle = ("|" + $groupName + "|" + $hairHandle);
+
+	select -cl;
+
+	//previously used for collision but removed because underiable results
+	//
+	//if( `window -exists collisionWin` )
+	//{
+	//	deleteUI collisionWin;
+	//	windowPref -remove collisionWin;
+	//}
+	//	
+	//window -w 245 -h 72 -menuBar true -title "Hair Collisions" collisionWin;
+	//	columnLayout -adjustableColumn 1;
+	//	rowColumnLayout  -numberOfColumns 2 -columnWidth 1 119 -columnWidth 2 119; 
+	//	
+	//	text -label " Select collision objects: ";
+	//	text -label "  Mesh / Surface";
+	//	
+	//	button -label "Make Collide" -c ("makeHairJointsCollide " +  $hsys[0] + " " + $hairHandle + " ; deleteUI collisionWin ;windowPref -remove collisionWin");
+	//	button -label "No Collisions" -c ("deleteUI collisionWin ; windowPref -remove collisionWin");
+	//	
+	//showWindow collisionWin;
+	
+
+	rename $hairCurveBase "baseCurve#";
+	rename $hairCurve "hairCurve#";	
+	select -r $hairHandle;
+
+	//add info to notes
+	addAttr -sn "nts" -ln "notes" -dt "string" $hairHandle;
+	setAttr ($hairHandle+".nts") -type "string" "The hairHandle contains extra attributes that indirectly control the more common attrs that exist on the actual hairSystem node.  This is done so that you can easily access and edit the attrs from the channel box by selecting the hair handle.  You can remove these attrs or break their connection if you're more experienced with hair and want to work with the hairSystem directly.\r\n";
+
+	print ("Hair curve attached to joint chain.  See notes on Hair Handle node for more details.\n");
+
+}
+
+
+
+
+//bt_makeJointsDynamicUI;
+
+
+
+

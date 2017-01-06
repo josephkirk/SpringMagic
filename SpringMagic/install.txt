@@ -1,0 +1,3 @@
+from SpringMagic import SpringMagic
+reload(SpringMagic)
+SpringMagic.makeSpringUI()
