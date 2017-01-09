@@ -93,18 +93,23 @@ def createBoneFromSelection():
     if not selection:
         print "No Selection"
         return
+    obRoot = selection[0].getParent()
+    pm.select(obRoot)
     index = 0
     while index<len(selection):
         print index
         ob=selection[index]
-        bonObs.append((cmds.joint(p=getTranslate(ob)),ob))
+        bone = pm.joint(p=getTranslate(ob))
+        bonObs.append((bone,ob))
         #constraintOb(bonObs[index][0],bonObs[index][1])
         index+=1
-    obRoot = pm.listRelatives(bonObs[0][1],p=True)
+    #obRoot = pm.listRelatives(bonObs[0][1],p=True)
     endJoint=createEndJoint(bonObs[len(bonObs)-1][0])
     for obs in bonObs:
         pm.orientConstraint(obs[0],obs[1],mo=True)
+        pm.pointConstraint(obs[0],obs[1],mo=True)
     bonObs.append((endJoint,None))
+    print bonObs
     return bonObs
 
 def createBone(Ob):
@@ -126,12 +131,12 @@ def createBone(Ob):
         pm.orientConstraint(obs[0],obs[1],mo=True)
     bonObs.append((endJoint,None))
     return bonObs
-
 def getBoneChain(bone):
+    print bone
     # only apply on child bone, bacause need a parent bone move to cause the overlapping
     if not bone.getParent():
         return False
-    
+
     # get bone chain, only get one stream, will not process branches
     boneChain = []
     boneChain.append( bone )
@@ -140,7 +145,7 @@ def getBoneChain(bone):
     boneChain.extend(childList)
     return boneChain
 
-def springApply(bone, pickedBones,springLoop=False,springRotateRate=0.3,springTwist=0.3):
+def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,springTwist=0.3):
     '''
     Get idea from max scripts 'SpringMagic' made by Sichuang Yuan, but make it more friendly with Maya
     '''
@@ -156,21 +161,20 @@ def springApply(bone, pickedBones,springLoop=False,springRotateRate=0.3,springTw
     # Check Unit
     if sceneUnit!='cm':
         pm.currentUnit(l='cm')
-    # get bone chain, only get one stream, will not process branches
-    if pm.nodeType(bone)=='joint':
-        boneChain = getBoneChain(bone)
+    # get pickedBone chain, only get one stream, will not process branches
+    if pm.nodeType(pickedBone)=='joint':
+        boneChain = getBoneChain(pickedBone)
     else:
-        boneObs = createBone(bone)
+        boneObs = createBone(pickedBone)
         boneChain=[b[0] for b in boneObs]
     if not boneChain:
         return
-    print boneChain
+    print pickedBone
     boneRoot = boneChain[0].getParent()
-    print boneRoot
     # get frame range
     pm.currentTime( startFrame, edit=True )
 
-    # get bone chain start pose and key it
+    # get pickedBone chain start pose and key it
     boneStartRotation = {}
     # boneStartMatirx = {}
     for bone in boneChain:
@@ -305,8 +309,8 @@ def springApply(bone, pickedBones,springLoop=False,springRotateRate=0.3,springTw
                 #runProgressBar( main_progressBar, 1/(loopCount+1)*(1/pickedBoneCount)*(1/boneChainCount)*(1/(frameCount+1))*100 )
             # save for next frame use
             previousBoneWorldTranlation = copy.copy(boneWorldTranlation)
-
-    if pm.nodeType(bone)!='joint':
+    print pickedBone,boneChain   
+    if pm.nodeType(pickedBone)!='joint':
         for o in boneObs:
             if o[1]:
                 pm.bakeResults(o[1],at=['rotate'], t=(startFrame,endFrame))
@@ -338,29 +342,29 @@ def bakeAnimTuple(tupleOb,startFrame,endFrame):
             pm.setKeyframe(o[1],at='rotate')
         f+=1
 
-def makeDynamic(bone):
+def makeDynamic(pickedBone):
     if sceneUnit!='cm':
         pm.currentUnit(l='cm')
-    if pm.nodeType(bone)=='joint':
-        boneChain = getBoneChain(bone)
+    if pm.nodeType(pickedBone)=='joint':
+        boneChain = getBoneChain(pickedBone)
     else:
-        boneObs = createBone(bone)
+        boneObs = createBone(pickedBone)
         boneChain=getBoneChain(boneObs[0][0])
-        print bone,boneObs,boneChain
+        print pickedBone,boneObs,boneChain
     if not boneChain:
         return
     pm.select([boneChain[0],boneChain[len(boneChain)-1]],r=True)
     driveJointsWithHair(detailValue,falloffValue)
     hairHandle=pm.ls('hairHandle1')[0]
     hairHandle.setAttr("hairDamping",dampValue)
-    if pm.nodeType(bone)=='joint':
-        pm.bakeResults(bone,at=['rotate'],hi='below',sm=True,t=getTimeRange())
+    if pm.nodeType(pickedBone)=='joint':
+        pm.bakeResults(pickedBone,at=['rotate'],hi='below',sm=True,t=getTimeRange())
         pm.delete('dynJoint*','nucleus*','follicle*')
     else:
         for o in boneObs:
             if o[1]:
                 pm.bakeResults(o[1],at=['rotate'],t=getTimeRange(),sm=True)
-        pm.delete(boneObs[0][0],'dynJoint*','nucleus*','follicle*',hi='below')
+        pm.delete(boneChain,'dynJoint*','nucleus*','follicle*',hi='below')
     pm.currentUnit(l=sceneUnit)
     #bakeIt(boneObs)
 def checkPlaySpeed():
@@ -376,17 +380,28 @@ def driveJointsWithHair(detail,falloff):
 
 ############ Main Function
 def springIt(method):
-    if pm.ls(sl=1, type='joint'):
-        pickedBones = pm.ls(sl=1, type='joint')
-    elif pm.ls(sl=1):
-        pickedBones = pm.ls(sl=1)
+    if pickMethod:
+        if pm.ls(sl=1, type='joint'):
+            pickedBones = pm.ls(sl=1, type='joint')
+        elif pm.ls(sl=1):
+            pickedBones = pm.ls(sl=1)
+        else:
+            return False
     else:
-        return False
+        if pm.ls(sl=1) and len(pm.ls(sl=1))>1:
+            boneLink=createBoneFromSelection()
+            pickedBones=[boneLink[0][0]]
+        else:
+            return False
     for bone in pickedBones:
         if method:
             makeDynamic(bone)
         else:
             springApply(bone,pickedBones,springLoop=loopValue,springRotateRate=springValue,springTwist=twistValue)
+    if not pickMethod:
+        for o in boneLink:
+            pm.bakeResults(o,at=['translate','rotate'],t=getTimeRange(),sm=True)
+        pm.delete(pickedBones,hi=True)
 
 ############ UI Function
 def nulldef():
@@ -425,6 +440,11 @@ def changeEFVal(val):
     global endFrame
     endFrame=val
     print endFrame
+def changeMethodVal(val):
+    global pickMethod
+    pickMethod=val
+    #makeSpringUI()
+    print pickMethod
 def InteractivePlayback():
     pm.setCurrentTime(pm.playbackOptions(q=True,minTime=True))
     mm.eval('InteractivePlayback;')
@@ -436,15 +456,17 @@ def makeSpringUI():
     if pm.window('makeSpringWin',ex=True):
         pm.deleteUI('makeSpringWin',window=True)
         pm.windowPref('makeSpringWin',remove=True)
-    pm.window('makeSpringWin',t="Spring Magic Maya %s" % version)
+    pm.window('makeSpringWin',menuBar=True,t="Spring Magic Maya %s" % version)
+    pm.menu(tearOff=False,l="Edit")
+    pm.menuItem(l="Reset Settings",ann="Reset all",c=lambda *arg:makeSpringUI())
     pm.scrollLayout('scrollLayout')
     pm.frameLayout(label="")
     pm.columnLayout(adjustableColumn=1)
     pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,90),(2,60),(3,90)])
-    pm.text(label="Method: ")
+    pm.text(label="Pick Method: ")
     dynMethodID = pm.radioCollection()
-    pm.radioButton(label="Chain",select=True)
-    pm.radioButton(label="Selection")
+    pm.radioButton(label="Hierachy",select=True,onc=lambda *arg:changeMethodVal(1))
+    pm.radioButton(label="Selection",onc=lambda *arg:changeMethodVal(0))
     pm.setParent('..')
     pm.rowColumnLayout(numberOfColumns=6,columnWidth=[(1,90),(2,60),(3,55),(4,45),(5,30),(6,45)])
     pm.text(label="Key Range: ")
@@ -488,7 +510,10 @@ def makeSpringUI():
     pm.setParent('..')
     pm.setParent('..')
     pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,112),(2,112),(3,112)])
-    pm.button(label="Spring Magic",c=lambda *arg:springIt(0))
+    if not pickMethod:
+        pm.button(label="Spring Magic",c=lambda *arg:springIt(0),en=False)
+    else:
+        pm.button(label="Spring Magic",c=lambda *arg:springIt(0))
     pm.button(label="Hair Magic",c=lambda *arg:springIt(1))
     pm.button(label="Clear",c=lambda *arg:clearAnim())
     pm.showWindow()
