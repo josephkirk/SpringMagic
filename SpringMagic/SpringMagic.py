@@ -404,6 +404,12 @@ def springIt(method):
         pm.delete(pickedBones,hi=True)
 
 ############ UI Function
+def setSpringOptionVars():
+    if not pm.optionVar.has_key('SpringPickType'): ### Pick first bone chain , or pick multiple unlink object
+        pm.optionVar['SpringPickType'] = 1
+def deleteSpringOptionVars():
+    if pm.optionVar.has_key('SpringPickType'):
+        pm.optionVar.pop('SpringPickType')
 def nulldef():
     print(tempJoints)
 def removeUI():
@@ -441,10 +447,12 @@ def changeEFVal(val):
     endFrame=val
     print endFrame
 def changeMethodVal(val):
-    global pickMethod
-    pickMethod=val
+    #global pickMethod
+    #pickMethod=val
+    if pm.optionVar.has_key('SpringPickType'):
+        pm.optionVar['SpringPickType'] = val
     #makeSpringUI()
-    print pickMethod
+    print pm.optionVar['SpringPickType']
 def InteractivePlayback():
     pm.setCurrentTime(pm.playbackOptions(q=True,minTime=True))
     mm.eval('InteractivePlayback;')
@@ -456,6 +464,8 @@ def makeSpringUI():
     if pm.window('makeSpringWin',ex=True):
         pm.deleteUI('makeSpringWin',window=True)
         pm.windowPref('makeSpringWin',remove=True)
+        deleteSpringOptionVars()
+    setSpringOptionVars()
     pm.window('makeSpringWin',menuBar=True,t="Spring Magic Maya %s" % version)
     pm.menu(tearOff=False,l="Edit")
     pm.menuItem(l="Reset Settings",ann="Reset all",c=lambda *arg:makeSpringUI())
@@ -510,10 +520,12 @@ def makeSpringUI():
     pm.setParent('..')
     pm.setParent('..')
     pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,112),(2,112),(3,112)])
-    if not pickMethod:
+    if not pm.optionVar['SpringPickType']:
         pm.button(label="Spring Magic",c=lambda *arg:springIt(0),en=False)
     else:
         pm.button(label="Spring Magic",c=lambda *arg:springIt(0))
     pm.button(label="Hair Magic",c=lambda *arg:springIt(1))
     pm.button(label="Clear",c=lambda *arg:clearAnim())
     pm.showWindow()
+# Script job
+sJob_main_updateUI = pm.scriptJob( event= ["SceneOpened", deleteSpringOptionVars], protected = True )
