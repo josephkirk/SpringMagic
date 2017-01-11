@@ -9,10 +9,11 @@ import pymel.core.datatypes as dt
 import maya.mel as mm
 
 
-versionList=['v',0.2,2017,10,1]
+versionList=['v',0.3,2017,11,1]
 version= ".".join([str(o) for o in versionList])
 #################### Global Variable
 sceneUnit= pm.currentUnit(l=True,q=True)
+toleranceValue = 0.5
 timeRange=1
 pickMethod=1
 springMethod=1
@@ -355,7 +356,7 @@ def makeDynamic(pickedBone):
     else:
         boneObs = createBone(pickedBone)
         boneChain=getBoneChain(boneObs[0][0])
-        print pickedBone,boneObs,boneChain
+        #print pickedBone,boneObs,boneChain
     if not boneChain:
         return
     pm.select([boneChain[0],boneChain[len(boneChain)-1]],r=True)
@@ -363,16 +364,26 @@ def makeDynamic(pickedBone):
     hairHandle=pm.ls('hairHandle1')[0]
     hairHandle.setAttr("hairDamping",dampValue)
     hairHandle.setAttr("hairStiffness",stiffValue)
-    if pm.nodeType(pickedBone)=='joint':
-        pm.bakeResults(pickedBone,at=['rotate'],hi='below',sm=True,t=getTimeRange())
-        pm.delete('dynJoint*','nucleus*','follicle*')
-    else:
-        for o in boneObs:
-            if o[1]:
-                pm.bakeResults(o[1],at=['rotate'],t=getTimeRange(),sm=True)
-        pm.delete(boneChain,'dynJoint*','nucleus*','follicle*',hi='below')
+    # if pm.nodeType(pickedBone)=='joint':
+    #     pm.bakeResults(pickedBone,at=['rotate'],hi='below',sm=True,t=getTimeRange())
+    #     pm.delete('dynJoint*','follicle*')
+    # else:
+        #pm.bakeResults(boneChain[0], o[1],at=['rotate'],t=getTimeRange(),sm=True,hi='below')
+    pm.bakeResults(pickedBone,at=['rotate'],t=getTimeRange(),sm=True,hi='below')
+    pm.delete(boneChain if pm.nodeType(pickedBone)!='joint' else None,'dynJoint*','follicle*')
     pm.currentUnit(l=sceneUnit)
     #bakeIt(boneObs)
+def makePassive():
+    if pm.selected():
+        for o in pm.selected():
+            pm.select(o,r=True)
+            pm.rename(o,"_".join(['collidedOb',o.name()]))
+            try:
+                mm.eval('makeCollideNCloth;')
+            except:
+                continue
+def removeDynamic():
+    pm.delete('collidedOb_*','nucleus*')
 def checkPlaySpeed():
     playSpeed = pm.playbackOptions(q=True,ps=True)
     if playSpeed:
@@ -385,7 +396,7 @@ def driveJointsWithHair(detail,falloff):
     pm.hide('hairHandle*','hairSystem*')
 
 ############ Main Function
-def springIt(method):
+def springIt(method,simplify = False):
     if pm.optionVar['SpringPickType']:
         if pm.ls(sl=1, type='joint'):
             pickedBones = pm.ls(sl=1, type='joint')
@@ -399,26 +410,31 @@ def springIt(method):
             pickedBones=[boneLink[0][0]]
         else:
             return False
+    if not pickedBones[0].getParent():
+        return False
     ### Execution
-    #pm.textField(progressControlID,e=True,tx="..Running..")
-    playOp = pm.playbackOptions(q=True,loop=True)
-    pm.playbackOptions(loop='once')
+    #playOp = pm.playbackOptions(q=True,loop=True)
+    #pm.playbackOptions(loop='once')
     pm.currentTime(getTimeRange()[0],e=True)
     mm.eval("paneLayout -e -m false $gMainPane")
     for bone in pickedBones:
         if method:
             makeDynamic(bone)
-            pm.play()
+            #pm.play()
         else:
             mm.eval("paneLayout -e -m true $gMainPane")
             springApply(bone,pickedBones,springLoop=loopValue,springRotateRate=springValue,springTwist=twistValue)
+        if simplify:
+            pm.filterCurve(getBoneChain(bone),f='simplify',startTime=getTimeRange()[0],endTime=getTimeRange()[1],tto=toleranceValue)
     if not pm.optionVar['SpringPickType']:
         for o in boneLink:
             pm.bakeResults(o,at=['translate','rotate'],t=getTimeRange(),sm=True)
+            if simplify:
+                pm.filterCurve(o,f='simplify',startTime=getTimeRange()[0],endTime=getTimeRange()[1],tto=toleranceValue)
         pm.delete(pickedBones,hi=True)
     mm.eval("paneLayout -e -m true $gMainPane")
-    pm.playbackOptions(loop=playOp)
-    #pm.evalDeferred('pm.textField(progressControlID,e=True,tx="...Finish...")')
+    #pm.playbackOptions(loop=playOp)
+    #pm.text(progressControlID,e=True,label="...Finish...")
 ############ UI Function
 def setSpringOptionVars():
     if not pm.optionVar.has_key('SpringPickType'): ### Pick first bone chain , or pick multiple unlink object
@@ -430,6 +446,9 @@ def nulldef():
     print(tempJoints)
 def removeUI():
     pm.deleteUI('makeSpringWin')
+def changeTolVal(val):
+    global toleranceValue
+    toleranceValue=val
 def changeDVal(val):
     global detailValue
     detailValue=val
@@ -507,72 +526,94 @@ def makeSpringUI():
     setSpringOptionVars()
     pm.window('makeSpringWin',menuBar=True,t="Spring Magic Maya %s" % version)
     pm.menu(tearOff=False,l="Edit")
+    #start menu
     pm.menuItem(l="Reset Settings",ann="Reset all",c=lambda *arg:makeSpringUI())
+    #end menu
     pm.scrollLayout('scrollLayout')
+    # start scrollLayout
     pm.frameLayout(lv=False)
+    ## start frameLayout
     pm.columnLayout(adjustableColumn=1)
+    ### start CollumnLayout
     pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,90),(2,90),(3,90)])
+    #### start rowCollum 3
     pm.text(label="Pick Method: ")
-    dynPickMethodID = pm.radioCollection()
-    pm.radioButton(label="Hierachy",select=True,onc=lambda *arg:changeMethodVal(1))
-    pm.radioButton(label="Selection",onc=lambda *arg:changeMethodVal(0))
+    dynPickMethodID = pm.radioCollection("PickMethodRadioCollection")
+    dynHierachyRadioID= pm.radioButton(label="Hierachy",onc=lambda *arg:changeMethodVal(1))
+    dynSelectionRadioID= pm.radioButton(label="Selection",onc=lambda *arg:changeMethodVal(0))
     pm.text(label="Spring Method: ")
-    dynSpringMethodID = pm.radioCollection()
+    dynSpringMethodID = pm.radioCollection("SpringMethodRadioCollection")
     dynHairMagicRadioID= pm.radioButton(label="Hair Magic",select=True,onc=lambda *arg:changeSpringMethodVal(1))
     dynSpringMagicRadioID= pm.radioButton(label="Spring Magic",onc=lambda *arg:changeSpringMethodVal(0))
     pm.setParent('..')
+    #### end rowCollumn 3
     pm.separator(style='in')
     pm.rowColumnLayout(numberOfColumns=6,columnWidth=[(1,90),(2,60),(3,55),(4,45),(5,30),(6,45)],bgc=(0.5,0.5,0.5))
+    #### start rowCollumn 6
     pm.text(label="Key Range: ")
-    dynkeyRange = pm.radioCollection()
+    dynkeyRange = pm.radioCollection("KeyRangeRadioCollection")
     pm.radioButton(label="Active",select=True,onc=lambda *arg:changeTRangeVal(1))
     pm.radioButton(label="From: ",onc=lambda *arg:changeTRangeVal(0))
     pm.intField(value=startFrame,cc=changeSFVal)
     pm.text(label="To: ")
     pm.intField(value=endFrame,cc=changeEFVal)
     pm.setParent('..')
+    #### end rowCollumn 6
     pm.separator(style='out')
     pm.setParent('..')
-    dynHairMagicFrameID=pm.frameLayout(label='Hair Magic',borderStyle='in')
-    pm.rowColumnLayout(numberOfColumns=2,columnWidth=[(1,90),(2,180)])
-    pm.text(label="Hair Damping: ",align='right')
-    pm.floatField(min=0.0, max=1, value=dampValue, step=0.1, cc=changeDaVal)
-    pm.text(label="Hair Stiffness: ",align='right')
-    pm.floatField(min=0.0, max=1, value=stiffValue, step=0.1, cc=changeStiffVal)
-    pm.setParent('..')
+    ## end frameLayout
+    dynHairMagicFrameID=pm.frameLayout(label='Hair Magic')
+    #start Hair Magic FrameLayout
     pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,90),(2,60),(3,60),(4,85)])
-    pm.text(label="Hair Stiffness : ",align='right')
-    dynJointFalloffID = pm.radioCollection()
+    #start rowCollumn
+    pm.text(label="Damping: ",align='right')
+    pm.floatField(min=0.0, max=1, value=dampValue, step=0.1,pre=2, cc=changeDaVal)
+    pm.text(label="Stiffness: ",align='right')
+    pm.floatField(min=0.0, max=1, value=stiffValue, step=0.1,pre=2, cc=changeStiffVal)
+    pm.text(label="Hair Falloff : ",align='right')
+    dynJointFalloffID = pm.radioCollection("FallOffRadioCollection")
     pm.radioButton(label="Normal",select=True,onc=lambda *arg:changeFVal(0))
     pm.radioButton(label="Quick",onc=lambda *arg:changeFVal(1))
     pm.radioButton(label="Slow",onc=lambda *arg:changeFVal(2))
     pm.text(label="Hair Detail : ",align='right')
-    dynJointDetailID = pm.radioCollection()
+    dynJointDetailID = pm.radioCollection("DetailRadioCollection")
     pm.radioButton(label="Low",onc=lambda *arg:changeDVal(0))
     pm.radioButton(label="Medium",select=True,onc=lambda *arg:changeDVal(1))
     pm.radioButton(label="High",onc=lambda *arg:changeDVal(2))
     pm.setParent('..')
+    pm.separator(style='in')
+    pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,90),(2,90),(3,25),(4,90)])
+    pm.text(label="Collider : ",align="right")
+    pm.button(label="Make Collider",c='makePassive()')
+    pm.text(label="")
+    pm.button(label="Remove Collider",c='removeDynamic()')
     pm.setParent('..')
-    dynSpringMagicFrameID=pm.frameLayout(label='Spring Magic',borderStyle='in',vis=False)
-    pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,120),(2,140),(3,60)])
-    pm.rowColumnLayout(numberOfColumns=2,columnWidth=[(1,60),(2,60)])
+    #end rowCollumn
+    pm.setParent('..')
+    #end Hair Magic FrameLayout
+    dynSpringMagicFrameID=pm.frameLayout(label='Spring Magic',vis=False)
+    #start Spring Magic Frame
+    pm.rowColumnLayout(numberOfColumns=6,columnWidth=[(1,90),(2,60),(3,55),(4,45),(5,30),(6,45)])
+    #start rowCollumn
     pm.text(label="Spring : ",align='right')
     pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=changeSprVal)
-    pm.setParent('..')
-    pm.rowColumnLayout(numberOfColumns=2,columnWidth=[(1,60),(2,60)])
     pm.text(label="Twist : ",align='right')
     pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=changeTwsVal)
-    pm.setParent('..')
+    pm.text(label="",align='right')
     pm.checkBox(label="Loop",cc=changeLoopVal)
     pm.setParent('..')
+    #end rowCollumn
     pm.setParent('..')
+    #end Spring Magic Frame
     pm.separator(style='in')
-    pm.rowColumnLayout(numberOfColumns=3,columnWidth=[(1,112),(2,112),(3,112)])
-    springButtonID= pm.button(label="Do",c="springIt(springMethod); pm.deleteUI('makeSpringWin',window=True)")
+    pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,112-30),(2,30),(3,112),(4,112)])
+    springButtonID= pm.button(label="Do Simplify",c="springIt(springMethod,simplify=True)")
+    pm.floatField(minValue=0, maxValue=1, value=0.5,step=0.1,pre=2,cc=changeTolVal)
     pm.button(label= "Apply",c='springIt(springMethod)')
     pm.button(label= "Clear",c='clearAnim()')
     pm.setParent('..')
-    #progressControlID=pm.textField(tx="...",ed=False,bgc=(0,.5,0.15),fn='boldLabelFont',h=20)
+    pm.radioCollection(dynPickMethodID,edit=True,select = dynHierachyRadioID if pm.optionVar['SpringPickType'] else dynSelectionRadioID)
+    #progressControlID=pm.text(label="...",bgc=(0,.5,0.15),fn='boldLabelFont',h=20)
     pm.showWindow()
 # Script job
-sJob_main_updateUI = pm.scriptJob( event= ["SceneOpened", deleteSpringOptionVars], protected = True )
+#sJob_main_updateUI = pm.scriptJob( event= ["SceneOpened", deleteSpringOptionVars], protected = True )
