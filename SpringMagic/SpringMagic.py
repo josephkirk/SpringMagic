@@ -401,23 +401,23 @@ def springIt(method):
             return False
     ### Execution
     #pm.textField(progressControlID,e=True,tx="..Running..")
-    #playOp = pm.playbackOptions(q=True,loop=True)
-    #pm.playbackOptions(loop='once')
+    playOp = pm.playbackOptions(q=True,loop=True)
+    pm.playbackOptions(loop='once')
     pm.currentTime(getTimeRange()[0],e=True)
-    mel.eval("paneLayout -e -m false $gMainPane")
+    mm.eval("paneLayout -e -m false $gMainPane")
     for bone in pickedBones:
         if method:
             makeDynamic(bone)
             pm.play()
         else:
-            mel.eval("paneLayout -e -m true $gMainPane")
+            mm.eval("paneLayout -e -m true $gMainPane")
             springApply(bone,pickedBones,springLoop=loopValue,springRotateRate=springValue,springTwist=twistValue)
     if not pm.optionVar['SpringPickType']:
         for o in boneLink:
             pm.bakeResults(o,at=['translate','rotate'],t=getTimeRange(),sm=True)
         pm.delete(pickedBones,hi=True)
-    mel.eval("paneLayout -e -m true $gMainPane")
-    #pm.playbackOptions(loop=playOp)
+    mm.eval("paneLayout -e -m true $gMainPane")
+    pm.playbackOptions(loop=playOp)
     #pm.evalDeferred('pm.textField(progressControlID,e=True,tx="...Finish...")')
 ############ UI Function
 def setSpringOptionVars():
