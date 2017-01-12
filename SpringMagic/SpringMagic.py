@@ -78,16 +78,12 @@ def springStraightBonePose(bone):
             bone.setAttr('jointOrient', [0,0,0])
 
 def createEndJoint(bone):
-    print bone
     if bone.getParent():
         jointRoot=bone.getParent()
-        print jointRoot
         poList=[]
         for j in [bone,jointRoot]:
-            print j
             poList.append(dt.Vector(pm.xform(j,q=True,ws=True,t=True)))
         endJointPos=(poList[0]-poList[1])*2+poList[0]
-        print dt.length(poList[1]-poList[0])
         pm.select(bone,r=True)
         endJoint=pm.joint(p=endJointPos)
         pm.joint(bone,e=True,zso=True,oj='xyz')
@@ -97,13 +93,11 @@ def createBoneFromSelection():
     bonObs =[]
     selection = pm.selected()
     if not selection:
-        print "No Selection"
         return
     obRoot = selection[0].getParent()
     pm.select(obRoot)
     index = 0
     while index<len(selection):
-        print index
         ob=selection[index]
         bone = pm.joint(p=getTranslate(ob))
         bonObs.append((bone,ob))
@@ -115,7 +109,6 @@ def createBoneFromSelection():
         pm.orientConstraint(obs[0],obs[1],mo=True)
         pm.pointConstraint(obs[0],obs[1],mo=True)
     bonObs.append((endJoint,None))
-    print bonObs
     return bonObs
 
 def createBone(Ob):
@@ -138,7 +131,6 @@ def createBone(Ob):
     bonObs.append((endJoint,None))
     return bonObs
 def getBoneChain(bone):
-    print bone
     # only apply on child bone, bacause need a parent bone move to cause the overlapping
     if not bone.getParent():
         return False
@@ -175,7 +167,6 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
         pm.hide(boneChain)
     if not boneChain:
         return
-    print pickedBone
     boneRoot = boneChain[0].getParent()
     # get frame range
     pm.currentTime( startFrame, edit=True )
@@ -315,7 +306,6 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
                 #runProgressBar( main_progressBar, 1/(loopCount+1)*(1/pickedBoneCount)*(1/boneChainCount)*(1/(frameCount+1))*100 )
             # save for next frame use
             previousBoneWorldTranlation = copy.copy(boneWorldTranlation)
-    print pickedBone,boneChain   
     if pm.nodeType(pickedBone)!='joint':
         for o in boneObs:
             if o[1]:
@@ -364,15 +354,9 @@ def makeDynamic(pickedBone):
     hairHandle=pm.ls('hairHandle1')[0]
     hairHandle.setAttr("hairDamping",dampValue)
     hairHandle.setAttr("hairStiffness",stiffValue)
-    # if pm.nodeType(pickedBone)=='joint':
-    #     pm.bakeResults(pickedBone,at=['rotate'],hi='below',sm=True,t=getTimeRange())
-    #     pm.delete('dynJoint*','follicle*')
-    # else:
-        #pm.bakeResults(boneChain[0], o[1],at=['rotate'],t=getTimeRange(),sm=True,hi='below')
     pm.bakeResults(pickedBone,at=['rotate'],t=getTimeRange(),sm=True,hi='below')
     pm.delete(boneChain if pm.nodeType(pickedBone)!='joint' else None,'dynJoint*','follicle*')
     pm.currentUnit(l=sceneUnit)
-    #bakeIt(boneObs)
 def makePassive():
     if pm.selected():
         for o in pm.selected():
@@ -479,7 +463,7 @@ def changeTRangeVal(val):
 def changeSFVal(val):
     global startFrame
     startFrame=val
-    print startFrame
+    #print startFrame
 def changeEFVal(val):
     global endFrame
     endFrame=val
