@@ -420,31 +420,12 @@ def springIt(method,simplify = False):
     #pm.playbackOptions(loop=playOp)
     #pm.text(progressControlID,e=True,label="...Finish...")
 ############ UI Function
-def setSpringOptionVars(unset=False):
-    global SpringVarDict= {
-        'SpringPickType':1,
-        'SpringMethod':1,
-        'SpringHairDamping':0.1,
-        'SpringHairStiffness':0.25,
-        'SpringHairFalloff':0,
-        'SpringHairDetail':1,
-        'SpringValue':0.3,
-        'SpringTwist':0.3,
-        'SpringLoop':0,
-        'SpringTimeRange':1,
-        'SpringStart':int(pm.playbackOptions(q=True,minTime=True)),
-        'SpringEnd':int(pm.playbackOptions(q=True,maxTime=True)),
-    }
-    for k in SpringVarDict:
-        if not unset:
-            if not pm.optionVar.has_key(k):
-                pm.optionVar[k]=SpringVarDict[k]
-        else:
-            if pm.optionVar.has_key(k):
-                pm.optionVar.pop[k]
-def setSpringAttr(attr,val):
-    if pm.optionVar.has_key(attr) and SpringVarDict.has_keys(k):
-        pm.optionVar[attr]=val
+def setSpringOptionVars():
+    if not pm.optionVar.has_key('SpringPickType'): ### Pick first bone chain , or pick multiple unlink object
+        pm.optionVar['SpringPickType'] = 1
+def deleteSpringOptionVars():
+    if pm.optionVar.has_key('SpringPickType'):
+        pm.optionVar.pop('SpringPickType')
 def nulldef():
     print(tempJoints)
 def removeUI():
