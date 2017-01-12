@@ -9,23 +9,10 @@ import pymel.core.datatypes as dt
 import maya.mel as mm
 
 
-versionList=['v',0.3,2017,11,1]
+versionList=['v',0.4,2017,12,1]
 version= ".".join([str(o) for o in versionList])
 #################### Global Variable
 sceneUnit= pm.currentUnit(l=True,q=True)
-toleranceValue = 0.5
-timeRange=1
-pickMethod=1
-springMethod=1
-startFrame = int(pm.playbackOptions(q=True,minTime=True))
-endFrame = int(pm.playbackOptions(q=True,maxTime=True))
-detailValue = 1
-falloffValue = 0
-dampValue=0.1
-stiffValue=0.25
-springValue=0.3
-twistValue=0.3
-loopValue=False
 scriptName = inspect.getframeinfo(inspect.currentframe()).filename
 scriptPath = os.path.dirname(os.path.abspath(scriptName))
 scriptPath = "/".join(scriptPath.split('\\'))
@@ -36,16 +23,12 @@ mm.eval('source "%s/driveJointsWithHair.mel";' % scriptPath)
 #################### Function Definition
 ######## Misc Function
 def getTimeRange(*arg):
-    global startFrame
-    global endFrame
-    if timeRange:
-        startFrame = int(pm.playbackOptions(q=True,minTime=True))
-        endFrame = int(pm.playbackOptions(q=True,maxTime=True))
+    if getSpringAttr('SpringTimeRange'):
+        setSpringAttr('SpringStart',int(pm.playbackOptions(q=True,minTime=True)))
+        setSpringAttr('SpringEnd',int(pm.playbackOptions(q=True,maxTime=True)))
+        return (getSpringAttr('SpringStart'),getSpringAttr('SpringEnd'))
     else:
-        startFrame=startFrame
-        endFrame=endFrame
-    sfef =(startFrame,endFrame)
-    return sfef
+        return (getSpringAttr('SpringStart'),getSpringAttr('SpringEnd'))
 
 def alignOb(alignOb,ob):
     alignObMatrix = pm.xform(alignOb,ws=True,q=True,m=True)
@@ -169,7 +152,7 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
         return
     boneRoot = boneChain[0].getParent()
     # get frame range
-    pm.currentTime( startFrame, edit=True )
+    pm.currentTime( getTimeRange()[0], edit=True )
 
     # get pickedBone chain start pose and key it
     boneStartRotation = {}
@@ -185,7 +168,7 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
         if not springLoop:
             pm.setKeyframe(bone, attribute = 'rotate')
         # delete key not at start frame
-        pm.cutKey( bone, time=(startFrame + 1,endFrame) )
+        pm.cutKey( bone, time=(getTimeRange()[0] + 1,getTimeRange()[1]) )
 
     # get bone start world translation
     boneWorldTranlation = {}
@@ -196,11 +179,11 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
     loopCount = float(springLoop)
     pickedBoneCount = float(len(pickedBones))
     boneChainCount = float(len(boneChain))
-    frameCount = float(endFrame-startFrame)
+    frameCount = float(getTimeRange()[1]-getTimeRange()[0])
     # caculate part
     for loop in range( int(loopCount+1) ):
 
-        for frame in range( startFrame, endFrame+1 ):
+        for frame in range( getTimeRange()[0], getTimeRange()[1]+1 ):
 
             pm.currentTime( frame, edit=True )
 
@@ -309,7 +292,7 @@ def springApply(pickedBone, pickedBones,springLoop=False,springRotateRate=0.3,sp
     if pm.nodeType(pickedBone)!='joint':
         for o in boneObs:
             if o[1]:
-                pm.bakeResults(o[1],at=['rotate'], t=(startFrame,endFrame))
+                pm.bakeResults(o[1],at=['rotate'], t=getTimeRange())
         pm.delete(boneChain)
     #return Unit
     pm.currentUnit(l=sceneUnit)
@@ -421,7 +404,8 @@ def springIt(method,simplify = False):
     #pm.text(progressControlID,e=True,label="...Finish...")
 ############ UI Function
 def setSpringOptionVars(unset=False):
-    global SpringVarDict= {
+    global SpringVarDict
+    SpringVarDict = {
         'SpringPickType':1,
         'SpringMethod':1,
         'SpringHairDamping':0.1,
@@ -431,10 +415,11 @@ def setSpringOptionVars(unset=False):
         'SpringValue':0.3,
         'SpringTwist':0.3,
         'SpringLoop':0,
+        'SpringReduceTolerance':0.2,
         'SpringTimeRange':1,
         'SpringStart':int(pm.playbackOptions(q=True,minTime=True)),
-        'SpringEnd':int(pm.playbackOptions(q=True,maxTime=True)),
-    }
+        'SpringEnd':int(pm.playbackOptions(q=True,maxTime=True))
+        }
     for k in SpringVarDict:
         if not unset:
             if not pm.optionVar.has_key(k):
@@ -442,80 +427,47 @@ def setSpringOptionVars(unset=False):
         else:
             if pm.optionVar.has_key(k):
                 pm.optionVar.pop[k]
+
+def getSpringAttr(attr):
+    if pm.optionVar.has_key(attr) and SpringVarDict.has_key(attr):
+        return pm.optionVar[attr]
+
 def setSpringAttr(attr,val):
-    if pm.optionVar.has_key(attr) and SpringVarDict.has_keys(k):
+    if pm.optionVar.has_key(attr) and SpringVarDict.has_key(attr):
         pm.optionVar[attr]=val
-def nulldef():
-    print(tempJoints)
+
 def removeUI():
     pm.deleteUI('makeSpringWin')
-def changeTolVal(val):
-    global toleranceValue
-    toleranceValue=val
-def changeDVal(val):
-    global detailValue
-    detailValue=val
-def changeFVal(val):
-    global falloffValue
-    falloffValue=val
-def changeDaVal(val):
-    global dampValue
-    dampValue=val
-def changeStiffVal(val):
-    global stiffValue
-    stiffValue=val
-def changeSprVal(val):
-    global springValue
-    springValue=val
-def changeTwsVal(val):
-    global twistValueValue
-    twistValue=val
-    #print twistValue
-def changeLoopVal(val):
-    global loopValue
-    loopValue=val
-    #print loopValue
-def changeTRangeVal(val):
-    global timeRange
-    timeRange=val
-    #print timeRange
-def changeSFVal(val):
-    global startFrame
-    startFrame=val
-    #print startFrame
-def changeEFVal(val):
-    global endFrame
-    endFrame=val
-    #print endFrame
-def changeSpringMethodVal(val):
-    global springMethod
-    springMethod=val
-    if not val:
-        pm.frameLayout(dynSpringMagicFrameID,e=True,vis=True)
-        pm.frameLayout(dynHairMagicFrameID,e=True,vis=False)
-    else:
+
+def changeMethod():
+    if getSpringAttr('SpringMethod'):
+        setSpringAttr('SpringMethod',0)
         pm.frameLayout(dynHairMagicFrameID,e=True,vis=True)
         pm.frameLayout(dynSpringMagicFrameID,e=True,vis=False)
-def changeMethodVal(val):
-    #global pickMethod
-    #pickMethod=val
-    global springMethod
-    if pm.optionVar.has_key('SpringPickType'):
-        pm.optionVar['SpringPickType'] = val
-    if val:
-        pm.radioButton(dynSpringMagicRadioID,e=True,ed=True)
     else:
-        springMethod=1
+        setSpringAttr('SpringMethod',1)
+        pm.frameLayout(dynSpringMagicFrameID,e=True,vis=True)
+        pm.frameLayout(dynHairMagicFrameID,e=True,vis=False)
+
+def changePickMethod():
+    if getSpringAttr('SpringPickType'):
+        setSpringAttr('SpringPickType',0)
+        setSpringAttr('SpringMethod',1)
         pm.radioButton(dynHairMagicRadioID,e=True,select=True)
         pm.radioButton(dynSpringMagicRadioID,e=True,ed=False,select=False)
-    #print pm.optionVar['SpringPickType']
+    else:
+        setSpringAttr('SpringPickType',1)
+        pm.radioButton(dynSpringMagicRadioID,e=True,ed=True)
+
 def InteractivePlayback():
     pm.setCurrentTime(pm.playbackOptions(q=True,minTime=True))
     mm.eval('InteractivePlayback;')
     pm.setCurrentTime(pm.playbackOptions(q=True,minTime=True))
+
 def clearAnim():
     clearKeys((startFrame,endFrame))
     pm.currentTime(startFrame,edit=True)
+
 def makeSpringUI():
     global springButtonID
     global dynHairMagicFrameID
@@ -542,24 +494,24 @@ def makeSpringUI():
     #### start rowCollum 3
     pm.text(label="Pick Method: ")
     dynPickMethodID = pm.radioCollection("PickMethodRadioCollection")
-    dynHierachyRadioID= pm.radioButton(label="Hierachy",onc=lambda *arg:changeMethodVal(1))
-    dynSelectionRadioID= pm.radioButton(label="Selection",onc=lambda *arg:changeMethodVal(0))
+    dynHierachyRadioID= pm.radioButton(label="Hierachy",onc='changePickMethod()')
+    dynSelectionRadioID= pm.radioButton(label="Selection",onc='changePickMethod()')
     pm.text(label="Spring Method: ")
     dynSpringMethodID = pm.radioCollection("SpringMethodRadioCollection")
-    dynHairMagicRadioID= pm.radioButton(label="Hair Magic",select=True,onc=lambda *arg:changeSpringMethodVal(1))
-    dynSpringMagicRadioID= pm.radioButton(label="Spring Magic",onc=lambda *arg:changeSpringMethodVal(0))
+    dynHairMagicRadioID= pm.radioButton(label="Hair Magic",onc='changeMethod()')
+    dynSpringMagicRadioID= pm.radioButton(label="Spring Magic",onc='changeMethod()')
     pm.setParent('..')
     #### end rowCollumn 3
     pm.separator(style='in')
     pm.rowColumnLayout(numberOfColumns=6,columnWidth=[(1,90),(2,60),(3,55),(4,45),(5,30),(6,45)],bgc=(0.5,0.5,0.5))
     #### start rowCollumn 6
     pm.text(label="Key Range: ")
-    dynkeyRange = pm.radioCollection("KeyRangeRadioCollection")
-    pm.radioButton(label="Active",select=True,onc=lambda *arg:changeTRangeVal(1))
-    pm.radioButton(label="From: ",onc=lambda *arg:changeTRangeVal(0))
-    pm.intField(value=startFrame,cc=changeSFVal)
+    dynkeyRangeID = pm.radioCollection("KeyRangeRadioCollection")
+    dynTimeRadioID1=pm.radioButton(label="Active",onc=lambda *arg:setSpringAttr('SpringTimeRange',1))
+    dynTimeRadioID2=pm.radioButton(label="From: ",onc=lambda *arg:setSpringAttr('SpringTimeRange',0))
+    pm.intField(value=getTimeRange()[0],cc=lambda *arg:setSpringAttr('SpringStart', *arg))
     pm.text(label="To: ")
-    pm.intField(value=endFrame,cc=changeEFVal)
+    pm.intField(value=getTimeRange()[1],cc=lambda *arg:setSpringAttr('SpringEnd', *arg))
     pm.setParent('..')
     #### end rowCollumn 6
     pm.separator(style='out')
@@ -570,19 +522,19 @@ def makeSpringUI():
     pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,90),(2,60),(3,60),(4,85)])
     #start rowCollumn
     pm.text(label="Damping: ",align='right')
-    pm.floatField(min=0.0, max=1, value=dampValue, step=0.1,pre=2, cc=changeDaVal)
+    pm.floatField(min=0.0, max=1, value=getSpringAttr('SpringHairDetail'), step=0.1,pre=2, cc=lambda *arg:setSpringAttr('SpringHairDetail', *arg))
     pm.text(label="Stiffness: ",align='right')
-    pm.floatField(min=0.0, max=1, value=stiffValue, step=0.1,pre=2, cc=changeStiffVal)
+    pm.floatField(min=0.0, max=1, value=getSpringAttr('SpringHairStiffness'), step=0.1,pre=2, cc=lambda *arg:setSpringAttr('SpringHairStiffness', *arg))
     pm.text(label="Hair Falloff : ",align='right')
     dynJointFalloffID = pm.radioCollection("FallOffRadioCollection")
-    pm.radioButton(label="Normal",select=True,onc=lambda *arg:changeFVal(0))
-    pm.radioButton(label="Quick",onc=lambda *arg:changeFVal(1))
-    pm.radioButton(label="Slow",onc=lambda *arg:changeFVal(2))
+    dynFalloffRadioID1=pm.radioButton(label="Normal",onc=lambda *arg:setSpringAttr('SpringHairFalloff', 0))
+    dynFalloffRadioID2=pm.radioButton(label="Quick",onc=lambda *arg:setSpringAttr('SpringHairFalloff', 1))
+    dynFalloffRadioID3=pm.radioButton(label="Slow",onc=lambda *arg:setSpringAttr('SpringHairFalloff', 2))
     pm.text(label="Hair Detail : ",align='right')
     dynJointDetailID = pm.radioCollection("DetailRadioCollection")
-    pm.radioButton(label="Low",onc=lambda *arg:changeDVal(0))
-    pm.radioButton(label="Medium",select=True,onc=lambda *arg:changeDVal(1))
-    pm.radioButton(label="High",onc=lambda *arg:changeDVal(2))
+    dynDetailRadioID1=pm.radioButton(label="Low",onc=lambda *arg:setSpringAttr('SpringHairDetail', 0))
+    dynDetailRadioID2=pm.radioButton(label="Medium",onc=lambda *arg:setSpringAttr('SpringHairDetail', 1))
+    dynDetailRadioID3=pm.radioButton(label="High",onc=lambda *arg:setSpringAttr('SpringHairDetail', 2))
     pm.setParent('..')
     pm.separator(style='in')
     pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,90),(2,90),(3,25),(4,90)])
@@ -599,23 +551,26 @@ def makeSpringUI():
     pm.rowColumnLayout(numberOfColumns=6,columnWidth=[(1,90),(2,60),(3,55),(4,45),(5,30),(6,45)])
     #start rowCollumn
     pm.text(label="Spring : ",align='right')
-    pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=changeSprVal)
+    pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=lambda *arg:setSpringAttr('SpringValue', *arg))
     pm.text(label="Twist : ",align='right')
-    pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=changeTwsVal)
+    pm.floatField(minValue=0, maxValue=1, value=0.3,editable=True,cc=lambda *arg:setSpringAttr('SpringTwist', *arg))
     pm.text(label="",align='right')
-    pm.checkBox(label="Loop",cc=changeLoopVal)
+    pm.checkBox(label="Loop",cc=lambda *arg:setSpringAttr('SpringLoop', *arg))
     pm.setParent('..')
     #end rowCollumn
     pm.setParent('..')
     #end Spring Magic Frame
     pm.separator(style='in')
     pm.rowColumnLayout(numberOfColumns=4,columnWidth=[(1,112-30),(2,30),(3,112),(4,112)])
-    springButtonID= pm.button(label="Do Simplify",c="springIt(springMethod,simplify=True)")
-    pm.floatField(minValue=0, maxValue=1, value=0.5,step=0.1,pre=2,cc=changeTolVal)
-    pm.button(label= "Apply",c='springIt(springMethod)')
+    springButtonID= pm.button(label="Do Simplify",c=lambda *arg:springIt(getSpringAttr("SpringMethod"),simplify=True))
+    pm.floatField(minValue=0, maxValue=1, value=0.5,step=0.1,pre=2,cc=lambda *arg:setSpringAttr('SpringReduceTolerance', *arg))
+    pm.button(label= "Apply",c=lambda *arg:springIt(getSpringAttr("SpringMethod")))
     pm.button(label= "Clear",c='clearAnim()')
     pm.setParent('..')
-    pm.radioCollection(dynPickMethodID,edit=True,select = dynHierachyRadioID if pm.optionVar['SpringPickType'] else dynSelectionRadioID)
+    pm.radioCollection(dynkeyRangeID,edit=True,select = pm.radioCollection(dynkeyRangeID,q=True,cia=True)[getSpringAttr('SpringTimeRange')])
+    pm.radioCollection(dynJointFalloffID,edit=True,select = pm.radioCollection(dynJointFalloffID,q=True,cia=True)[getSpringAttr('SpringHairFalloff')])
+    pm.radioCollection(dynPickMethodID,edit=True,select = dynHierachyRadioID if getSpringAttr('SpringPickType') else dynSelectionRadioID)
+    pm.radioCollection(dynSpringMethodID,edit=True,select = dynHairMagicRadioID if getSpringAttr('SpringMethod') else dynSpringMagicRadioID)
     #progressControlID=pm.text(label="...",bgc=(0,.5,0.15),fn='boldLabelFont',h=20)
     pm.showWindow()
 # Script job
