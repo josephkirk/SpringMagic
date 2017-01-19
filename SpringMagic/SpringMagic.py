@@ -386,7 +386,7 @@ def driveJointsWithHair(detail,falloff):
 
 ############ Main Function
 def springIt(method):
-    if pm.optionVar['SpringPickType']:
+    if pickMethod:
         if pm.ls(sl=1, type='joint'):
             pickedBones = pm.ls(sl=1, type='joint')
         elif pm.ls(sl=1):
@@ -408,11 +408,11 @@ def springIt(method):
     for bone in pickedBones:
         if method:
             makeDynamic(bone)
-            pm.play()
+            #pm.play()
         else:
             mm.eval("paneLayout -e -m true $gMainPane")
             springApply(bone,pickedBones,springLoop=loopValue,springRotateRate=springValue,springTwist=twistValue)
-    if not pm.optionVar['SpringPickType']:
+    if not pickMethod:
         for o in boneLink:
             pm.bakeResults(o,at=['translate','rotate'],t=getTimeRange(),sm=True)
         pm.delete(pickedBones,hi=True)
@@ -420,12 +420,6 @@ def springIt(method):
     pm.playbackOptions(loop=playOp)
     #pm.evalDeferred('pm.textField(progressControlID,e=True,tx="...Finish...")')
 ############ UI Function
-def setSpringOptionVars():
-    if not pm.optionVar.has_key('SpringPickType'): ### Pick first bone chain , or pick multiple unlink object
-        pm.optionVar['SpringPickType'] = 1
-def deleteSpringOptionVars():
-    if pm.optionVar.has_key('SpringPickType'):
-        pm.optionVar.pop('SpringPickType')
 def nulldef():
     print(tempJoints)
 def removeUI():
@@ -475,18 +469,16 @@ def changeSpringMethodVal(val):
         pm.frameLayout(dynHairMagicFrameID,e=True,vis=True)
         pm.frameLayout(dynSpringMagicFrameID,e=True,vis=False)
 def changeMethodVal(val):
-    #global pickMethod
-    #pickMethod=val
+    global pickMethod
+    pickMethod=val
     global springMethod
-    if pm.optionVar.has_key('SpringPickType'):
-        pm.optionVar['SpringPickType'] = val
     if val:
         pm.radioButton(dynSpringMagicRadioID,e=True,ed=True)
     else:
         springMethod=1
         pm.radioButton(dynHairMagicRadioID,e=True,select=True)
         pm.radioButton(dynSpringMagicRadioID,e=True,ed=False,select=False)
-    #print pm.optionVar['SpringPickType']
+    #print pickMethod
 def InteractivePlayback():
     pm.setCurrentTime(pm.playbackOptions(q=True,minTime=True))
     mm.eval('InteractivePlayback;')
@@ -504,7 +496,6 @@ def makeSpringUI():
     if pm.window('makeSpringWin',ex=True):
         pm.deleteUI('makeSpringWin',window=True)
         pm.windowPref('makeSpringWin',remove=True)
-    setSpringOptionVars()
     pm.window('makeSpringWin',menuBar=True,t="Spring Magic Maya %s" % version)
     pm.menu(tearOff=False,l="Edit")
     pm.menuItem(l="Reset Settings",ann="Reset all",c=lambda *arg:makeSpringUI())
